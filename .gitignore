@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Never commit vaults, old databases, backups or emergency kits
+*.kinko
+*.kinko.restoring
+*.db
+backups/
+*.pdf
+
+# Local output and editors
+screenshots/
+out/
+.idea/
+.vscode/
+.DS_Store

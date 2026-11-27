@@ -52,7 +52,7 @@ def button(text: str, variant: str | None = None, icon_name: str | None = None, 
     if variant:
         b.setProperty("variant", variant)
     if icon_name:
-        color = theme.t("ai_ink") if variant == "primary" else theme.t("ink2")
+        color = theme.t("btn_ink") if variant == "primary" else theme.t("ink2")
         b.setIcon(icons.icon(icon_name, color, 16))
         b.setIconSize(QSize(15, 15))
     b.setCursor(Qt.CursorShape.PointingHandCursor)

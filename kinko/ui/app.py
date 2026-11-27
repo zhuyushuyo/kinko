@@ -12,7 +12,7 @@ from .. import __version__
 from ..i18n import set_language, tr
 from ..paths import config_dir
 from ..settings import Settings
-from . import icons, theme
+from . import icons, native, theme
 
 
 def _setup_logging() -> logging.Logger:
@@ -31,6 +31,7 @@ def _setup_logging() -> logging.Logger:
 
 def run(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv
+    native.set_app_user_model_id()  # Windows: our own taskbar button and icon, not Python's
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(argv)
     app.setApplicationName("KINKO")

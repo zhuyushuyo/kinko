@@ -162,6 +162,35 @@ def normalize_item(data: dict) -> dict:
     return d
 
 
+# Two-step verification, per account:
+#   on      - switched on (with the app or method in "app")
+#   off     - the service offers it, but it is not switched on yet
+#   none    - the service does not offer it
+#   unknown - not recorded (stored as no value at all)
+# Stored in fields["twofa"] as {"state": ..., "on": bool, "app": str}. "on" is what KINKO 1.0.0 reads:
+# 1.0.0 shows an account as using 2FA only when it is True and hides the field otherwise.
+TWOFA_STATES = ("unknown", "on", "off", "none")
+
+
+def twofa_state(value: Any) -> str:
+    if not isinstance(value, dict):
+        return "unknown"
+    state = value.get("state")
+    if state in ("on", "off", "none"):
+        return state
+    return "on" if value.get("on") else "unknown"
+
+
+def twofa_value(state: str, app: str = "") -> dict | None:
+    """What the vault stores for a 2FA state (None for unknown)."""
+    if state not in ("on", "off", "none"):
+        return None
+    out: dict = {"state": state, "on": state == "on"}
+    if state == "on" and app.strip():
+        out["app"] = app.strip()
+    return out
+
+
 def is_empty(value: Any) -> bool:
     if value is None:
         return True
@@ -170,8 +199,26 @@ def is_empty(value: Any) -> bool:
     if isinstance(value, list):
         return not any((q.get("q") or q.get("a")) for q in value if isinstance(q, dict))
     if isinstance(value, dict):
-        return not value.get("on")
+        return twofa_state(value) == "unknown"
     return False
+
+
+def same_service_item(src: dict) -> dict:
+    """A new, empty account for the same service as src: its name, category, tags, URL, extra field
+    names and whether the service offers 2FA. No ID, password, PIN, answer or note is copied."""
+    d = empty_item(src.get("category", "service"), src.get("sub", ""))
+    d["title"] = src.get("title", "")
+    d["tags"] = list(src.get("tags", []))
+    d["extra"] = [dict(e) for e in src.get("extra", []) if isinstance(e, dict)]
+    url = (src.get("fields") or {}).get("url")
+    if url:
+        d["fields"]["url"] = url
+    state = twofa_state((src.get("fields") or {}).get("twofa"))
+    if state in ("on", "off"):
+        d["fields"]["twofa"] = twofa_value("off")  # the service offers it; this account has not set it up
+    elif state == "none":
+        d["fields"]["twofa"] = twofa_value("none")
+    return d
 
 
 # ---------------------------------------------------------------- lookups

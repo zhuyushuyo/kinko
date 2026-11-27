@@ -23,6 +23,7 @@ from PyQt6.QtCore import QPoint  # noqa: E402
 from PyQt6.QtGui import QPainter, QPixmap  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
+from kinko.core.model import twofa_value  # noqa: E402
 from kinko.core.vault import Vault  # noqa: E402
 from kinko.i18n import set_language  # noqa: E402
 from kinko.settings import Settings  # noqa: E402
@@ -42,7 +43,7 @@ def sample_vault(path: Path) -> Vault:
     bank = add({"title": "ひかり銀行", "category": "finance", "sub": "bank", "favorite": True, "tags": ["給与口座"],
                 "fields": {"username": "hikari_taro01", "password": "OldBank#2019-pass", "transaction_password": "Trade!77x",
                            "pin": "4812", "branch": "101　本店営業部", "account_number": "1234567",
-                           "twofa": {"on": True, "app": "Google Authenticator"},
+                           "twofa": twofa_value("on", "Google Authenticator"),
                            "url": "https://hikari-bank.example/login",
                            "secret_qa": [{"q": "母親の旧姓は？", "a": "やまだ"}, {"q": "最初のペットの名前は？", "a": "ぽち"}],
                            "notes": "キャッシュカードの有効期限は2027年3月。\n住所変更は本店の窓口で手続き済み。"}})
@@ -66,11 +67,14 @@ def sample_vault(path: Path) -> Vault:
                     "password": "Nenkin*2025-ok"}})
     add({"title": "研究室チャット", "category": "work", "tags": ["研究"],
          "fields": {"email": "taro@lab.example.ac.jp", "password": "Lab-chat-2026!x",
-                    "twofa": {"on": True, "app": "Microsoft Authenticator"}}})
-    add({"title": "星のRPGオンライン", "category": "game", "fields": {"username": "hoshi_taro", "password": "Hoshi-RPG-2026"}})
+                    "twofa": twofa_value("on", "Microsoft Authenticator")}})
+    add({"title": "星のRPGオンライン", "category": "game",
+         "fields": {"username": "hoshi_taro", "password": "Hoshi-RPG-2026!sky", "twofa": twofa_value("none")}})
+    add({"title": "フリマアプリ ぽけっと", "category": "shopping",
+         "fields": {"email": "taro.yamada@example.jp", "password": "Poket#Furima-2026x", "twofa": twofa_value("off")}})
     add({"title": "クラウド保存 Nuage", "category": "service", "tags": ["研究"],
          "fields": {"email": "taro.yamada@example.jp", "password": "kamosu-renoki-tabaru-mise7",
-                    "twofa": {"on": True, "app": "Google Authenticator"}}})
+                    "twofa": twofa_value("on", "Google Authenticator")}})
     add({"title": "あおばカード", "category": "finance", "sub": "credit_card", "status": "closed",
          "fields": {"email": "taro.yamada@example.jp", "password": "Aoba-card-01"}})
     old = add({"title": "古い通販サイト", "category": "shopping", "fields": {"username": "olduser"}})
@@ -132,6 +136,16 @@ def main() -> None:
     view.copy_quick(bank, "username")
     QApplication.processEvents()
     grab(win).save(str(out / "02_main_light.png"))
+    settings.set("theme", "dark")
+    win.apply_appearance()
+    win.view.list.select_id(bank)
+    QApplication.processEvents()
+    grab(win).save(str(out / "02b_main_dark.png"))
+    settings.set("theme", "light")
+    win.apply_appearance()
+    view = win.view
+    view.list.select_id(bank)
+    QApplication.processEvents()
 
     view.list.search.setText("ﾏﾙｼｪ")
     QApplication.processEvents()
@@ -182,6 +196,12 @@ def main() -> None:
     wiz.done(0)
 
     win.lock("manual")
+    settings.set("theme", "dark")
+    win.apply_appearance()
+    QApplication.processEvents()
+    grab(win).save(str(out / "01b_lock_dark.png"))
+    settings.set("theme", "light")
+    win.apply_appearance()
     win.show_welcome()
     QApplication.processEvents()
     grab(win).save(str(out / "11_welcome.png"))

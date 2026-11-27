@@ -4,10 +4,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QKeySequence
-from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QDialog, QFileDialog, QFontComboBox, QFrame,
+from PyQt6.QtGui import QFont, QKeySequence
+from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QFontComboBox, QFrame,
                              QGridLayout, QHBoxLayout, QHeaderView, QKeySequenceEdit, QLabel, QLineEdit, QListWidget,
-                             QPushButton, QScrollArea, QSpinBox, QStackedWidget, QTableWidget, QVBoxLayout, QWidget)
+                             QScrollArea, QSpinBox, QStackedWidget, QTableWidget, QVBoxLayout, QWidget)
 
 from .. import __version__
 from ..i18n import LANGUAGES, tr
@@ -180,23 +180,20 @@ class SettingsDialog(QDialog):
         th.changed.connect(lambda v: self._appearance_set("theme", v))
         self._row(g, tr("settings.theme"), th)
 
-        acc = QHBoxLayout()
-        acc.setSpacing(8)
-        self._accent_buttons = []
-        for key, (light, dark) in theme.ACCENTS.items():
-            b = QPushButton()
-            b.setProperty("variant", "swatch")
-            b.setCheckable(True)
-            b.setChecked(self.settings["accent"] == key)
-            b.setToolTip(tr(f"accent.{key}"))
-            b.setStyleSheet(f"background: {dark if theme.is_dark() else light};")
-            b.clicked.connect(lambda _=False, k=key: self._set_accent(k))
-            acc.addWidget(b)
-            self._accent_buttons.append((key, b))
-        custom = button(tr("settings.accent_custom"), "ghost", "palette", slot=self._custom_accent)
-        acc.addWidget(custom)
-        acc.addStretch(1)
-        self._row(g, tr("settings.accent"), acc)
+        pal = QHBoxLayout()
+        pal.setSpacing(6)
+        for key in ("ai", "tokiwa", "kincha", "bengara"):
+            sw = QLabel()
+            sw.setFixedSize(16, 16)
+            sw.setToolTip(tr(f"settings.palette_role.{key}"))
+            sw.setStyleSheet(f"background: {theme.t(key)}; border-radius: 8px;")
+            pal.addWidget(sw)
+        pal.addSpacing(6)
+        pal.addWidget(label(tr("settings.palette_name"), "muted"))
+        pal.addStretch(1)
+        pal.addWidget(button(tr("settings.palette_folder"), "ghost", "folder",
+                             slot=lambda: reveal_in_file_manager(theme.override_file())))
+        self._row(g, tr("settings.palette"), pal, tr("settings.palette_note"))
 
         dens = Segmented([("standard", tr("settings.density_standard")), ("compact", tr("settings.density_compact"))],
                          self.settings["density"])
@@ -251,19 +248,6 @@ class SettingsDialog(QDialog):
     def _appearance_set(self, key: str, value) -> None:
         self.settings.set(key, value)
         self.main.apply_appearance()
-
-    def _set_accent(self, key: str) -> None:
-        for k, b in self._accent_buttons:
-            b.setChecked(k == key)
-        self._appearance_set("accent", key)
-
-    def _custom_accent(self) -> None:
-        start = QColor(self.settings["accent"]) if self.settings["accent"].startswith("#") else QColor(theme.t("ai"))
-        c = QColorDialog.getColor(start, self, tr("settings.accent_custom"))
-        if c.isValid():
-            for _, b in self._accent_buttons:
-                b.setChecked(False)
-            self._appearance_set("accent", c.name())
 
     def _security(self) -> QWidget:
         w, g = self._grid()

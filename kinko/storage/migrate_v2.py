@@ -17,7 +17,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from ..core.model import find_category, normalize_config
+from ..core.model import find_category, normalize_config, twofa_value
 from ..core.vault import Vault, WrongPassword
 
 V2_SALT = b"account_manager_minimal_salt_2026"
@@ -181,7 +181,7 @@ def build_entries(rows: list[dict], dec: V2Decryptor, config: dict, report: Migr
         if qa:
             fields["secret_qa"] = qa
         if r.get("requires_auth") or r.get("authenticator_type"):
-            fields["twofa"] = {"on": True, "app": r.get("authenticator_type") or ""}
+            fields["twofa"] = twofa_value("on", r.get("authenticator_type") or "")
 
         status = "closed" if (r.get("status") or "active") == "cancelled" else "active"
         updated = _iso(r.get("updated_at") or "")

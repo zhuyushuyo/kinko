@@ -57,7 +57,6 @@ DEFAULTS: dict[str, Any] = {
     "trash_days": 30,
     # 表示
     "theme": "system",  # light / dark / system
-    "accent": "ai",  # preset key or "#RRGGBB"
     "density": "standard",  # standard / compact
     "font_px": 13,
     "font_family": "",  # "" = OS default Japanese UI font

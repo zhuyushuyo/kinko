@@ -5,7 +5,7 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QMenu, QScrollArea, QSizePolicy,
                              QToolButton, QVBoxLayout, QWidget)
 
-from ..core.model import category_path, closed_label, find_category, first_letter, item_fields
+from ..core.model import category_path, closed_label, find_category, first_letter, item_fields, twofa_state
 from ..i18n import tr
 from ..services.index import OLD_DAYS
 from . import icons, theme
@@ -26,7 +26,8 @@ class DetailView(QWidget):
     trash_requested = pyqtSignal(str)
     restore_requested = pyqtSignal(str)
     purge_requested = pyqtSignal(str)
-    duplicate_requested = pyqtSignal(str)
+    duplicate_requested = pyqtSignal(str)  # another account for the same service
+    new_requested = pyqtSignal()
     copy_requested = pyqtSignal(str, str, str, str)  # item id, field key, value, label
     open_url_requested = pyqtSignal(str, str)
     history_requested = pyqtSignal(str)
@@ -84,9 +85,10 @@ class DetailView(QWidget):
         pills.addWidget(cat_pill)
         if closed:
             pills.addWidget(label(closed_label(cfg, d), "pill"))
-        twofa = d["fields"].get("twofa") or {}
-        if twofa.get("on"):
-            pills.addWidget(label(tr("detail.twofa_on"), "pill_ok"))
+        sf = None if rec.trashed else index.safety.get(iid)
+        if sf is not None:
+            pill = label(tr(f"safety.level.{sf.level}"), {"high": "pill_ok", "mid": "pill_warn", "low": "pill_risk"}[sf.level])
+            pills.addWidget(pill)
         for tag in d.get("tags", []):
             pills.addWidget(label("#" + tag, "pill"))
         pills.addStretch(1)
@@ -103,7 +105,11 @@ class DetailView(QWidget):
             more.setFixedSize(34, 34)
             more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
             m = QMenu(more)
-            m.addAction(tr("detail.duplicate"), lambda: self.duplicate_requested.emit(iid))
+            m.setToolTipsVisible(True)
+            m.addAction(icons.icon("plus", theme.t("ink2"), 16), tr("detail.new"), self.new_requested.emit)
+            same = m.addAction(tr("detail.duplicate"), lambda: self.duplicate_requested.emit(iid))
+            same.setToolTip(tr("detail.duplicate_tip"))
+            m.addSeparator()
             m.addAction(tr("detail.history"), lambda: self.history_requested.emit(iid))
             m.addSeparator()
             m.addAction(tr("detail.to_trash"), lambda: self.trash_requested.emit(iid))
@@ -129,12 +135,8 @@ class DetailView(QWidget):
             banner.add_button(tr("detail.restore"), lambda: self.restore_requested.emit(iid), "primary")
             banner.add_button(tr("detail.purge"), lambda: self.purge_requested.emit(iid), "danger")
             bl.addWidget(banner)
-        else:
-            issues = index.issues.get(iid, [])
-            if issues:
-                texts = [tr(f"issue.{k}", n=index.reused.get(iid, 0)) for k in issues]
-                kind = "risk" if ("reused" in issues or "weak" in issues) else "warn"
-                bl.addWidget(Banner(kind, "　".join(texts), "alert"))
+        elif sf is not None:
+            bl.addWidget(SafetyBox(sf))
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(14)
@@ -210,8 +212,15 @@ class DetailView(QWidget):
             copy_btn = tool("copy", tr("action.copy"), lambda: self.copy_requested.emit(iid, key, value, lab), 17)
             actions.addWidget(copy_btn)
         elif ftype == "twofa":
-            app = (value or {}).get("app") or ""
-            v = label(tr("detail.twofa_value", app=app) if app else tr("detail.twofa_yes"), "value")
+            state = twofa_state(value)
+            app = (value.get("app") or "") if isinstance(value, dict) else ""
+            if state == "on":
+                text = tr("detail.twofa_value", app=app) if app else tr("detail.twofa_yes")
+            else:
+                text = tr(f"twofa.{state}")
+            v = label(text, "value", wrap=True)
+            if state == "off":
+                v.setStyleSheet(f"color: {theme.t('kincha')};")
             valrow.addWidget(v)
         elif ftype == "qa":
             qa = [q for q in (value or []) if isinstance(q, dict) and (q.get("q") or q.get("a"))]
@@ -329,6 +338,42 @@ class DetailView(QWidget):
                 pass
 
         QTimer.singleShot(2500, reset)
+
+
+class SafetyBox(QFrame):
+    """The account's safety level and why: what to fix, or what is already done."""
+
+    def __init__(self, sf, parent=None):
+        super().__init__(parent)
+        kind = {"high": "ok", "mid": "warn", "low": "risk"}[sf.level]
+        color = theme.t({"ok": "tokiwa", "warn": "kincha", "risk": "bengara"}[kind])
+        self.setProperty("role", f"banner_{kind}")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(12, 9, 12, 9)
+        lay.setSpacing(9)
+        ic = QLabel()
+        ic.setPixmap(icons.pixmap({"ok": "shield_check", "warn": "shield_dot", "risk": "shield_alert"}[kind], color, 18))
+        ic.setFixedWidth(20)
+        lay.addWidget(ic, 0, Qt.AlignmentFlag.AlignTop)
+        col = QVBoxLayout()
+        col.setSpacing(3)
+        self.title = label(tr(f"safety.title.{sf.level}"), f"banner_{kind}", wrap=True)
+        f = self.title.font()
+        f.setWeight(f.Weight.DemiBold)
+        self.title.setFont(f)
+        col.addWidget(self.title)
+        if sf.reasons:
+            for r in sf.reasons:
+                col.addWidget(label("・" + tr(f"issue.{r}", n=sf.reused), "", wrap=True))
+        else:
+            done = [tr("safety.ok.password"), tr("safety.ok.unique"), tr("safety.ok.recent")]
+            if sf.twofa == "on":
+                done.append(tr("safety.twofa.on"))
+            text = "　".join("✓ " + x for x in done)
+            if sf.twofa in ("none", "unknown"):
+                text += "　" + tr(f"safety.twofa.{sf.twofa}")
+            col.addWidget(label(text, "small", wrap=True))
+        lay.addLayout(col, 1)
 
 
 def _tint(color: str) -> str:

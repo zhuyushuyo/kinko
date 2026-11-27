@@ -1,10 +1,14 @@
 """Design tokens and the app-wide style sheet.
 
-Palette: 漆喰 (plaster white) surfaces, 墨 (sumi) ink, an accent that defaults
-to 藍 (indigo), plus 弁柄 / 金茶 / 常盤 for warnings and good states.
+The colours are the owner's own, from github.com/zhuyushuyo/colour-themes: KINKO uses the 藤 Fuji
+theme, arranged for a password manager in palette.json (one dark and one light palette, the same
+role names and contrast rules as colour-themes, plus warn and risk). resolve() maps those roles to
+the token names this style sheet uses. A theme.json in the settings folder can override any role.
 """
 from __future__ import annotations
 
+import json
+import re
 import sys
 from pathlib import Path
 from string import Template
@@ -15,64 +19,100 @@ from PyQt6.QtGui import QColor, QFont, QFontDatabase, QGuiApplication, QPalette
 from ..paths import config_dir
 from . import icons
 
-LIGHT = {
-    "desk": "#E7E8E5", "chrome": "#F6F6F4", "shikkui": "#F0F1EE", "paper": "#FFFFFF", "paper2": "#FAFAF8",
-    "ink": "#23262B", "ink2": "#5E656F", "ink3": "#8C929A", "rule": "#DEE0E2", "rule2": "#EDEEEF",
-    "bengara": "#9A3C2B", "bengara_tint": "#F5E6E2", "kincha": "#8F5E0C", "kincha_tint": "#F5EDDB",
-    "tokiwa": "#2D6C50", "tokiwa_tint": "#E2EFE8", "field": "#F6F7F5", "shadow": "#23262B",
-}
-DARK = {
-    "desk": "#101215", "chrome": "#1A1D21", "shikkui": "#1D2025", "paper": "#23272D", "paper2": "#1F2227",
-    "ink": "#E6E7E9", "ink2": "#A2A8B1", "ink3": "#7B828C", "rule": "#343940", "rule2": "#2C3036",
-    "bengara": "#DB8572", "bengara_tint": "#3A2622", "kincha": "#D8A64B", "kincha_tint": "#362C1B",
-    "tokiwa": "#7AC29F", "tokiwa_tint": "#1F3329", "field": "#1B1E23", "shadow": "#000000",
-}
-# name: (light, dark)
-ACCENTS = {
-    "ai": ("#28457A", "#94AADA"),      # 藍
-    "tokiwa": ("#2D6C50", "#7AC29F"),  # 常盤
-    "shu": ("#A8412A", "#E89A84"),     # 朱
-    "fuji": ("#5B4B9A", "#AE9CE0"),    # 藤
-    "sumi": ("#3A3F46", "#C3C8CF"),    # 墨
-}
+PALETTE_FILE = Path(__file__).with_name("palette.json")
+ROLES = ("bg", "side", "surf", "surf2", "line", "line_strong", "text", "text2", "text3", "accent", "btn",
+         "btn_ink", "track", "good", "app", "script", "warn", "risk")
+MODES = ("dark", "light")
+_HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+# Category colours, (light, dark). Muted so they sit next to the violet accent without competing.
 CAT_COLORS = {
-    "shop": ("#9C6714", "#D5A04B"), "svc": ("#366AA2", "#80A8DA"), "fin": ("#2D6C50", "#7AC29F"),
+    "shop": ("#8C5A0E", "#D5A04B"), "svc": ("#286BAA", "#9FC0F0"), "fin": ("#2D6C50", "#7AC29F"),
     "game": ("#6857A2", "#AE9CE0"), "gov": ("#9A3C2B", "#DB8572"), "work": ("#5B636D", "#A2A8B1"),
-    "teal": ("#1F6F78", "#6CC3CB"), "plum": ("#8A3E6B", "#D98CBB"), "olive": ("#5F6B1F", "#B5C46A"),
+    "teal": ("#1F6F78", "#6CC3CB"), "plum": ("#9D4B85", "#E3A9D6"), "olive": ("#5F6B1F", "#B5C46A"),
     "rust": ("#A0522D", "#E0A07A"),
 }
 
-_state = {"tokens": dict(LIGHT), "dark": False, "density": "standard", "font_px": 13}
+_state = {"tokens": None, "dark": False, "density": "standard", "font_px": 13}
 
 
 def mix(a: str, b: str, t: float) -> str:
-    ca, cb = QColor(a), QColor(b)
-    r = round(ca.red() + (cb.red() - ca.red()) * t)
-    g = round(ca.green() + (cb.green() - ca.green()) * t)
-    bl = round(ca.blue() + (cb.blue() - ca.blue()) * t)
-    return QColor(r, g, bl).name()
+    """The colour t of the way from a to b (both #RRGGBB)."""
+    ca = [int(a[i:i + 2], 16) for i in (1, 3, 5)]
+    cb = [int(b[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x + (y - x) * t):02X}" for x, y in zip(ca, cb))
 
 
-def _accent_pair(accent: str) -> tuple[str, str]:
-    if accent in ACCENTS:
-        return ACCENTS[accent]
-    c = QColor(accent)
-    if not c.isValid():
-        return ACCENTS["ai"]
-    return c.name(), mix(c.name(), "#FFFFFF", 0.5)
+def _channel(v: int) -> float:
+    c = v / 255
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
 
 
-def resolve(dark: bool, accent: str) -> dict:
-    tok = dict(DARK if dark else LIGHT)
-    light_ac, dark_ac = _accent_pair(accent)
-    ai = dark_ac if dark else light_ac
-    tok["ai"] = ai
-    tok["ai_hover"] = mix(ai, "#FFFFFF", 0.15) if dark else mix(ai, "#000000", 0.18)
-    tok["ai_ink"] = "#121722" if dark else "#FFFFFF"
-    tok["ai_tint"] = mix(tok["paper"], ai, 0.20 if dark else 0.11)
-    tok["ai_line"] = mix(tok["paper"], ai, 0.45 if dark else 0.33)
-    tok["mark_bg"] = light_ac
-    tok["mark_fg"] = "#F0F1EE"
+def luminance(colour: str) -> float:
+    r, g, b = (int(colour[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * _channel(r) + 0.7152 * _channel(g) + 0.0722 * _channel(b)
+
+
+def contrast(a: str, b: str) -> float:
+    hi, lo = sorted((luminance(a), luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def override_file() -> Path:
+    return config_dir() / "theme.json"
+
+
+def load_palettes(override: Path | None = None) -> dict:
+    """{"dark": {role: colour}, "light": {...}}: palette.json, then any roles a theme.json overrides.
+
+    theme.json has the same shape as palette.json ({"dark": {...}, "light": {...}}) and may name only
+    some roles. Unknown roles and colours that are not #RRGGBB are ignored.
+    """
+    data = json.loads(PALETTE_FILE.read_text(encoding="utf-8"))
+    pal = {mode: {k: data[mode][k] for k in ROLES} for mode in MODES}
+    path = override if override is not None else override_file()
+    try:
+        if path.is_file():
+            user = json.loads(path.read_text(encoding="utf-8"))
+            for mode in MODES:
+                for key, value in (user.get(mode) or {}).items():
+                    if key in ROLES and isinstance(value, str) and _HEX.match(value):
+                        pal[mode][key] = value.upper()
+    except (OSError, ValueError, AttributeError, TypeError):
+        pass
+    return pal
+
+
+def resolve(dark: bool, palettes: dict | None = None) -> dict:
+    """The style sheet's tokens for one mode, made from the palette's roles."""
+    p = (palettes or load_palettes())["dark" if dark else "light"]
+    surf, accent = p["surf"], p["accent"]
+    tint = 0.16 if dark else 0.10
+    tok = {
+        # surfaces: sidebar and status bar / list pane / detail, dialogs and cards / inputs
+        "shikkui": p["side"], "chrome": p["side"], "paper2": p["bg"], "paper": surf,
+        "field": p["bg"] if dark else p["surf2"],
+        # ink and lines
+        "ink": p["text"], "ink2": p["text2"], "ink3": p["text3"],
+        "rule": p["line"], "rule2": mix(surf, p["line"], 0.55), "edge": p["line_strong"], "track": p["track"],
+        # the three safety levels
+        "tokiwa": p["good"], "tokiwa_tint": mix(surf, p["good"], tint),
+        "kincha": p["warn"], "kincha_tint": mix(surf, p["warn"], tint),
+        "bengara": p["risk"], "bengara_tint": mix(surf, p["risk"], tint),
+        # the one accent
+        "ai": accent,
+        "ai_hover": mix(accent, "#FFFFFF", 0.15) if dark else mix(accent, "#000000", 0.15),
+        "ai_ink": p["btn_ink"] if dark else "#FFFFFF",
+        "ai_tint": mix(surf, accent, tint),
+        "ai_line": mix(surf, accent, 0.45 if dark else 0.35),
+        # the primary button: the accent in dark, the ink in light (as colour-themes does)
+        "btn": p["btn"], "btn_ink": p["btn_ink"],
+        "btn_hover": mix(p["btn"], "#FFFFFF", 0.15) if dark else mix(p["btn"], "#FFFFFF", 0.18),
+        "btn_off": mix(surf, p["btn"], 0.35),
+        "knob_off": p["text2"] if dark else surf,
+        "shadow": "#000000" if dark else p["text"],
+        "mark_bg": icons.BRAND_BG, "mark_fg": icons.BRAND_FG,
+    }
     return tok
 
 
@@ -88,12 +128,14 @@ def is_dark() -> bool:
     return _state["dark"]
 
 
-def t(key: str) -> str:
-    return _state["tokens"][key]
-
-
 def tokens() -> dict:
+    if _state["tokens"] is None:
+        _state["tokens"] = resolve(False)
     return _state["tokens"]
+
+
+def t(key: str) -> str:
+    return tokens()[key]
 
 
 def cat_color(key: str) -> str:
@@ -215,8 +257,8 @@ QFrame#Card { background: $paper; border: 1px solid $rule; border-radius: 12px; 
 QFrame#Choice { background: $paper; border: 1px solid $rule; border-radius: 10px; }
 QFrame#Choice:hover { border-color: $ai; background: $ai_tint; }
 QFrame#Choice:focus { border-color: $ai; }
-QFrame#ChoicePrimary { background: $ai; border: 1px solid $ai; border-radius: 10px; }
-QFrame#ChoicePrimary:hover { background: $ai_hover; border-color: $ai_hover; }
+QFrame#ChoicePrimary { background: $btn; border: 1px solid $btn; border-radius: 10px; }
+QFrame#ChoicePrimary:hover { background: $btn_hover; border-color: $btn_hover; }
 QFrame#ChoicePrimary:focus { border: 2px solid $ai_line; }
 QFrame[role="box"] { background: $paper2; border: 1px solid $rule; border-radius: 8px; }
 QFrame[role="banner_warn"] { background: $kincha_tint; border-radius: 8px; }
@@ -229,7 +271,7 @@ QLabel[role="banner_info"] { color: $ai; }
 QLabel[role="banner_ok"] { color: $tokiwa; }
 
 QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QComboBox, QKeySequenceEdit QLineEdit {
-    background: $field; border: 1px solid $rule; border-radius: 7px; padding: ${inpad}px 9px;
+    background: $field; border: 1px solid $edge; border-radius: 7px; padding: ${inpad}px 9px;
     selection-background-color: $ai_line; selection-color: $ink; color: $ink;
 }
 QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QSpinBox:focus, QComboBox:focus { border: 1px solid $ai; }
@@ -251,14 +293,14 @@ QComboBox QAbstractItemView { background: $paper; border: 1px solid $rule; borde
 QComboBox[role="flat"] { background: transparent; border: 1px solid transparent; }
 QComboBox[role="flat"]:hover { background: $rule2; }
 
-QPushButton { background: $paper; color: $ink; border: 1px solid $rule; border-radius: 7px;
+QPushButton { background: $paper; color: $ink; border: 1px solid $edge; border-radius: 7px;
     padding: ${btnpad}px 14px; font-weight: 600; }
 QPushButton:hover { background: $rule2; }
 QPushButton:pressed { background: $rule; }
 QPushButton:disabled { color: $ink3; background: $paper2; }
-QPushButton[variant="primary"] { background: $ai; color: $ai_ink; border: 1px solid $ai; }
-QPushButton[variant="primary"]:hover { background: $ai_hover; border-color: $ai_hover; }
-QPushButton[variant="primary"]:disabled { background: $ai_line; border-color: $ai_line; color: $ai_ink; }
+QPushButton[variant="primary"] { background: $btn; color: $btn_ink; border: 1px solid $btn; }
+QPushButton[variant="primary"]:hover { background: $btn_hover; border-color: $btn_hover; }
+QPushButton[variant="primary"]:disabled { background: $btn_off; border-color: $btn_off; color: $btn_ink; }
 QPushButton[variant="ghost"] { background: transparent; border: 1px solid transparent; color: $ink2; }
 QPushButton[variant="ghost"]:hover { background: $rule2; color: $ink; }
 QPushButton[variant="danger"] { color: $bengara; }
@@ -268,8 +310,8 @@ QPushButton[variant="link"]:hover { text-decoration: underline; }
 QPushButton[variant="choice"] { text-align: left; padding: 14px 16px; border-radius: 10px; font-size: ${fs_value}px; }
 QPushButton[variant="choice"]:hover { border-color: $ai; background: $ai_tint; }
 QPushButton[variant="choiceprimary"] { text-align: left; padding: 14px 16px; border-radius: 10px; font-size: ${fs_value}px;
-    background: $ai; color: $ai_ink; border: 1px solid $ai; }
-QPushButton[variant="choiceprimary"]:hover { background: $ai_hover; }
+    background: $btn; color: $btn_ink; border: 1px solid $btn; }
+QPushButton[variant="choiceprimary"]:hover { background: $btn_hover; }
 QPushButton[variant="swatch"] { border-radius: 12px; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0; border: 2px solid $paper; }
 QPushButton[variant="swatch"]:checked { border: 2px solid $ink; }
 QPushButton[variant="quick"] { padding: 2px 8px; font-size: ${fs_small}px; font-weight: 500; color: $ink2; }
@@ -278,10 +320,10 @@ QToolButton { background: transparent; border: 1px solid transparent; border-rad
 QToolButton:hover { background: $rule2; }
 QToolButton:pressed { background: $rule; }
 QToolButton:checked { background: $ai_tint; }
-QToolButton[variant="boxed"] { border: 1px solid $rule; background: $paper; }
+QToolButton[variant="boxed"] { border: 1px solid $edge; background: $paper; }
 QToolButton[variant="boxed"]:hover { background: $rule2; }
 QToolButton[variant="done"] { background: $tokiwa_tint; }
-QToolButton[variant="seg"] { background: $paper; border: 1px solid $rule; border-radius: 0; padding: 3px 10px; color: $ink2; font-size: ${fs_small}px; }
+QToolButton[variant="seg"] { background: $paper; border: 1px solid $edge; border-radius: 0; padding: 3px 10px; color: $ink2; font-size: ${fs_small}px; }
 QToolButton[variant="seg"][pos="first"] { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
 QToolButton[variant="seg"][pos="last"] { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
 QToolButton[variant="seg"]:checked { background: $ai_tint; color: $ai; font-weight: 600; }
@@ -295,7 +337,7 @@ QCheckBox, QRadioButton { spacing: 8px; background: transparent; }
 QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid $ink3; background: $field; }
 QCheckBox::indicator:checked { background: $ai; border-color: $ai; image: url("$check"); }
 QCheckBox::indicator:disabled { background: $rule2; border-color: $rule; }
-QCheckBox[role="switch"]::indicator { width: 32px; height: 18px; border-radius: 9px; border: none; background: $rule; image: url("$knob_off"); }
+QCheckBox[role="switch"]::indicator { width: 32px; height: 18px; border-radius: 9px; border: none; background: $edge; image: url("$knob_off"); }
 QCheckBox[role="switch"]::indicator:checked { background: $ai; image: url("$knob_on"); }
 QRadioButton::indicator { width: 16px; height: 16px; border-radius: 8px; border: 1px solid $ink3; background: $field; }
 QRadioButton::indicator:checked { border: 5px solid $ai; background: $paper; }
@@ -351,7 +393,7 @@ def build_qss(tok: dict, px: int, compact_mode: bool) -> str:
         "inpad": 4 if compact_mode else 6, "inpad_l": 6 if compact_mode else 8,
         "btnpad": 4 if compact_mode else 6, "navpad": 6 if compact_mode else 8,
         "check": _asset("check", tok["ai_ink"], 3.0), "chev_down": _asset("chev_down", tok["ink2"]),
-        "chev_up": _asset("chev_up", tok["ink2"]), "knob_on": _knob(tok["ai_ink"]), "knob_off": _knob(tok["paper"], left=True),
+        "chev_up": _asset("chev_up", tok["ink2"]), "knob_on": _knob(tok["ai_ink"]), "knob_off": _knob(tok["knob_off"], left=True),
         "mono": mono_family(),
     })
     return _QSS.substitute(values)
@@ -369,7 +411,7 @@ def _knob(color: str, left: bool = False) -> str:
 def apply(app, settings) -> None:
     mode = settings["theme"]
     dark = system_is_dark() if mode == "system" else mode == "dark"
-    tok = resolve(dark, settings["accent"])
+    tok = resolve(dark)
     px = int(settings["font_px"] or 13)
     _state.update(tokens=tok, dark=dark, density=settings["density"], font_px=px)
     icons.clear_cache()

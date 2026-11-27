@@ -272,3 +272,111 @@ def test_copy_shortcut_from_list_and_search(env):
     pump()
     assert QGuiApplication.clipboard().text() == "hikari"
     win.close()
+
+
+def test_add_button_and_same_service_account(env):
+    settings, tmp = env
+    win = make_window(settings, tmp / "AppData" / "KINKO" / "personal.kinko")
+    win.unlock(PW)
+    pump()
+    view = win.view
+    bank = next(i for i, r in win.vault.items.items() if r.data["title"] == "ひかり銀行")
+    # the add button is always there, next to the search field
+    assert view.list.add_btn.isVisibleTo(win) and view.list.add_btn.text() == "追加"
+    view.list.add_btn.click()
+    pump()
+    assert view.editing and view.editor.iid is None and view.editor.title.text() == ""
+    view.editor.cancel()
+    pump()
+    # the detail menu offers both: a new account, and another account for the same service
+    view.list.select_id(bank)
+    pump()
+    from PyQt6.QtWidgets import QMenu, QToolButton
+
+    menus = [b.menu() for b in view.detail.findChildren(QToolButton) if b.menu() is not None]
+    texts = [a.text() for m in menus for a in m.actions() if isinstance(m, QMenu)]
+    assert "新しいアカウントを追加" in texts and "同じサービスの別アカウントを追加" in texts
+    win.vault.update_item(bank, {**win.vault.items[bank].data,
+                                 "fields": {**win.vault.items[bank].data["fields"], "url": "https://hikari.example"}})
+    view.refresh()
+    view.add_same_service(bank)
+    pump()
+    ed = view.editor
+    assert ed.iid is None and ed.title.text() == "ひかり銀行"
+    assert ed._editors["username"][1].text() == "" and ed._editors["password"][1].text() == ""
+    assert ed._editors["url"][1].text() == "https://hikari.example"
+    assert ed.cat.currentData() == "finance" and ed.sub.currentData() == "bank"
+    ed._editors["username"][1].setText("hikari-2")
+    ed.save()
+    pump()
+    assert sum(1 for r in win.vault.items.values() if r.data["title"] == "ひかり銀行") == 2
+    win.close()
+
+
+def test_twofa_states_and_safety_level(env):
+    settings, tmp = env
+    win = make_window(settings, tmp / "AppData" / "KINKO" / "personal.kinko")
+    win.unlock(PW)
+    pump()
+    view = win.view
+    bank = next(i for i, r in win.vault.items.items() if r.data["title"] == "ひかり銀行")
+    from kinko.core.model import twofa_state
+    from kinko.ui.item_detail import SafetyBox
+
+    # finance account, 2FA not checked yet: "medium", asks to check
+    view.list.select_id(bank)
+    pump()
+    view.edit_item(bank)
+    view.editor._editors["password"][1].setText("Kp7#vR2!mQ9x@Lw4")
+    view.editor.save()
+    pump()
+    assert view.index.safety[bank].level == "mid" and view.index.issues[bank] == ["twofa_check"]
+    box = view.detail.findChild(SafetyBox)
+    assert box is not None and box.title.text().startswith("安全度：中")
+    # the bank has no 2FA: no longer marked down
+    view.edit_item(bank)
+    tf = view.editor._editors["twofa"][1]
+    tf.set_state("none")
+    assert not tf.app.isVisibleTo(view.editor)
+    view.editor.save()
+    pump()
+    data = win.vault.items[bank].data
+    assert twofa_state(data["fields"]["twofa"]) == "none" and data["fields"]["twofa"]["on"] is False
+    assert view.index.safety[bank].level == "high" and bank not in view.index.issues
+    assert view.detail.findChild(SafetyBox).title.text().startswith("安全度：高")
+    # switched on, with an app
+    view.edit_item(bank)
+    tf = view.editor._editors["twofa"][1]
+    tf.set_state("on")
+    tf.app.setCurrentText("Authy")
+    view.editor.save()
+    pump()
+    assert win.vault.items[bank].data["fields"]["twofa"] == {"state": "on", "on": True, "app": "Authy"}
+    # the weak, reused or old ones come first in the security check
+    view.sidebar.select(("health",))
+    pump()
+    first = view.list.model.ids[0]
+    assert view.index.safety[first].level == "low"
+    assert view.list.caption.text().startswith("安全度")
+    win.close()
+
+
+def test_palette_in_settings_and_both_modes(env):
+    settings, tmp = env
+    win = make_window(settings, tmp / "AppData" / "KINKO" / "personal.kinko")
+    win.unlock(PW)
+    pump()
+    from PyQt6.QtWidgets import QLabel
+
+    from kinko.ui.settings_dialog import SettingsDialog
+
+    dlg = SettingsDialog(win, 1)
+    pump(1)
+    assert any(lb.text() == "藤 Fuji（KINKO 版）" for lb in dlg.findChildren(QLabel))
+    for mode, bg in (("dark", "#1A1927"), ("light", "#FFFFFF")):
+        settings.set("theme", mode)
+        win.apply_appearance()
+        pump()
+        assert theme.t("paper") == bg
+    dlg.close()
+    win.close()

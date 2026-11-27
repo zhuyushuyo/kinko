@@ -42,6 +42,9 @@ ICONS: dict[str, str] = {
     "user": '<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c.8-3.8 3.8-6 7.5-6s6.7 2.2 7.5 6"/>',
     "shield": '<path d="M12 3.5l7 3v5c0 4.4-3.1 7.7-7 9-3.9-1.3-7-4.6-7-9v-5z"/>',
     "shield_check": '<path d="M12 3.5l7 3v5c0 4.4-3.1 7.7-7 9-3.9-1.3-7-4.6-7-9v-5z"/><path d="M9 12l2.2 2.2L15.3 10"/>',
+    "shield_alert": '<path d="M12 3.5l7 3v5c0 4.4-3.1 7.7-7 9-3.9-1.3-7-4.6-7-9v-5z"/><path d="M12 8.5v4"/>'
+                    '<circle cx="12" cy="15.6" r=".6" ' + _DOT + '/>',
+    "shield_dot": '<path d="M12 3.5l7 3v5c0 4.4-3.1 7.7-7 9-3.9-1.3-7-4.6-7-9v-5z"/><circle cx="12" cy="12" r="1.6" ' + _DOT + '/>',
     "trash": '<path d="M4.8 7h14.4"/><path d="M9.5 7V5h5v2"/><path d="M6.8 7l.9 12.5h8.6L17.2 7"/>',
     "sliders": '<path d="M4.5 7h2.6M10.9 7h8.6M4.5 12h8.6M16.9 12h2.6M4.5 17h4.1M12.4 17h7.1"/><circle cx="9" cy="7" r="1.9"/>'
                '<circle cx="15" cy="12" r="1.9"/><circle cx="10.5" cy="17" r="1.9"/>',
@@ -131,7 +134,14 @@ def icon(name: str, color: str, size: int = 18, active_color: str | None = None)
     return ic
 
 
-def mark_markup(bg: str = "#28457A", fg: str = "#F0F1EE") -> str:
+# The KINKO mark's colours, from the 藤 Fuji theme of colour-themes: the light palette's violet ink
+# for the body, the dark palette's wisteria accent for the door. The same in dark and light mode.
+BRAND_BG = "#211F38"
+BRAND_FG = "#BBAAF7"
+ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256, 512)  # every size the Windows taskbar and title bar ask for
+
+
+def mark_markup(bg: str = BRAND_BG, fg: str = BRAND_FG) -> str:
     """The KINKO mark: a safe door with a dial."""
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
             f'<rect width="32" height="32" rx="7" fill="{bg}"/>'
@@ -144,7 +154,7 @@ def mark_markup(bg: str = "#28457A", fg: str = "#F0F1EE") -> str:
             f'</svg>')
 
 
-def mark_pixmap(size: int, bg: str = "#28457A", fg: str = "#F0F1EE") -> QPixmap:
+def mark_pixmap(size: int, bg: str = BRAND_BG, fg: str = BRAND_FG) -> QPixmap:
     key = ("__mark__", size, bg, fg)
     pm = _cache.get(key)
     if pm is None:
@@ -155,7 +165,7 @@ def mark_pixmap(size: int, bg: str = "#28457A", fg: str = "#F0F1EE") -> QPixmap:
 
 def app_icon() -> QIcon:
     ic = QIcon()
-    for s in (16, 24, 32, 48, 64, 128, 256, 512):
+    for s in ICON_SIZES:
         ic.addPixmap(render_svg(mark_markup(), s, 1.0))
     return ic
 

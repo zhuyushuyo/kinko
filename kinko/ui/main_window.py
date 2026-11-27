@@ -1,7 +1,6 @@
 """Main window: welcome / lock screen / three-pane vault view, plus shortcuts, auto-lock and backups."""
 from __future__ import annotations
 
-import copy
 import sys
 from pathlib import Path
 
@@ -11,6 +10,7 @@ from PyQt6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel, QMa
                              QSplitter, QStackedWidget, QWidget)
 
 from .. import VAULT_SUFFIX
+from ..core.model import same_service_item
 from ..core.vault import NotAVault, Vault, VaultChanged, VaultLocked, WrongPassword, restore_from_backup
 from ..i18n import set_language, tr
 from ..paths import find_v2_databases, reveal_in_file_manager
@@ -83,7 +83,8 @@ class VaultView(QWidget):
         d.trash_requested.connect(self.trash_item)
         d.restore_requested.connect(self.restore_item)
         d.purge_requested.connect(self.purge_item)
-        d.duplicate_requested.connect(self.duplicate_item)
+        d.duplicate_requested.connect(self.add_same_service)
+        d.new_requested.connect(self.new_item)
         d.copy_requested.connect(self.copy_field)
         d.open_url_requested.connect(self.open_url)
         d.history_requested.connect(self.show_history)
@@ -200,11 +201,11 @@ class VaultView(QWidget):
         self.detail_stack.setCurrentWidget(self.editor)
         self._set_editing(True)
 
-    def duplicate_item(self, iid: str) -> None:
-        data = copy.deepcopy(self.vault.items[iid].data)
-        data["title"] = tr("detail.copy_of", title=data.get("title", ""))
-        data["favorite"] = False
-        data["pw_changed_at"] = ""
+    def add_same_service(self, iid: str) -> None:
+        """A new account for the same service: name, category, URL and tags carried over, no ID or password."""
+        if self.editing and not self._leave_editor():
+            return
+        data = same_service_item(self.vault.items[iid].data)
         self.editor.start(self.vault, self.index, None, template_data=data)
         self.detail_stack.setCurrentWidget(self.editor)
         self._set_editing(True)

@@ -179,7 +179,7 @@ def test_migrate_from_v2(tmp_path):
     bank = items["ひかり銀行"].data
     assert bank["sub"] == "bank" and bank["fields"]["transaction_password"] == "Trade!77"
     assert bank["fields"]["account_number"] == "1234567" and bank["fields"]["branch"] == "101 本店営業部"
-    assert bank["fields"]["twofa"] == {"on": True, "app": "Google Authenticator"}
+    assert bank["fields"]["twofa"] == {"state": "on", "on": True, "app": "Google Authenticator"}
     assert bank["fields"]["secret_qa"] == [{"q": "母親の旧姓は？", "a": "やまだ"}]
     hist = v.secret_history(items["ひかり銀行"].id)
     assert hist[0]["value"] == "OldBank#2019"

@@ -8,6 +8,47 @@ import sys
 _MAC = sys.platform == "darwin"
 _WIN = sys.platform == "win32"
 
+APP_USER_MODEL_ID = "zhuyushuyo.KINKO"
+
+
+# ---------------------------------------------------------------- Windows taskbar
+
+def set_app_user_model_id(app_id: str = APP_USER_MODEL_ID) -> bool:
+    """Give the process its own identity on the Windows taskbar.
+
+    Without it Windows files the window under python.exe / pythonw.exe and the taskbar button
+    shows the Python icon instead of the window icon. Call it before the first window exists.
+    Returns True when the id was set (always False off Windows).
+    """
+    if not _WIN:
+        return False
+    try:
+        fn = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID  # type: ignore[attr-defined]
+        fn.argtypes = [ctypes.c_wchar_p]
+        fn.restype = ctypes.c_long  # HRESULT
+        return fn(app_id) == 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def app_user_model_id() -> str:
+    """The id the process has on the Windows taskbar, or "" (also off Windows)."""
+    if not _WIN:
+        return ""
+    try:
+        fn = ctypes.windll.shell32.GetCurrentProcessExplicitAppUserModelID  # type: ignore[attr-defined]
+        fn.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+        fn.restype = ctypes.c_long
+        ptr = ctypes.c_void_p()
+        if fn(ctypes.byref(ptr)) != 0 or not ptr.value:
+            return ""
+        try:
+            return ctypes.wstring_at(ptr.value)
+        finally:
+            ctypes.windll.ole32.CoTaskMemFree(ptr)  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        return ""
+
 
 # ---------------------------------------------------------------- Caps Lock
 

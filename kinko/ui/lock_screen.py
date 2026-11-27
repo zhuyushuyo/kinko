@@ -280,8 +280,8 @@ class ChoiceButton(QFrame):
         t.setFont(f)
         d = QLabel(desc)
         d.setWordWrap(True)
-        fg = theme.t("ai_ink") if primary else theme.t("ink")
-        sub = theme.t("ai_ink") if primary else theme.t("ink2")
+        fg = theme.t("btn_ink") if primary else theme.t("ink")
+        sub = theme.t("btn_ink") if primary else theme.t("ink2")
         t.setStyleSheet(f"color: {fg}; background: transparent;")
         d.setStyleSheet(f"color: {sub}; background: transparent; font-size: {theme.font_px() - 1}px;")
         for w in (t, d):

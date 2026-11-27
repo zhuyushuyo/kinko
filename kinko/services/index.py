@@ -5,7 +5,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
 from ..core.model import (category_path, closed_label, display_name, find_category, find_sub, item_fields,
-                          parse_iso)
+                          parse_iso, twofa_state)
+from .safety import Safety, assess
 from .search import matches, normalize, tokens
 from .strength import Strength, estimate
 
@@ -19,7 +20,9 @@ class Index:
         self.search_text: dict[str, str] = {}
         self.strength: dict[str, Strength] = {}
         self.reused: dict[str, int] = {}
-        self.issues: dict[str, list[str]] = {}
+        self.issues: dict[str, list[str]] = {}  # safety reasons of every account below "high"
+        self.safety: dict[str, Safety] = {}
+        self.level_counts: Counter = Counter()
         self.tags: Counter = Counter()
         self.cat_counts: Counter = Counter()
         self.sub_counts: Counter = Counter()
@@ -60,7 +63,8 @@ class Index:
                 elif f["type"] == "qa":
                     parts.extend(q.get("q", "") for q in d["fields"].get(f["key"], []) if isinstance(q, dict))
                 elif f["type"] == "twofa":
-                    parts.append((d["fields"].get(f["key"]) or {}).get("app", ""))
+                    v = d["fields"].get(f["key"])
+                    parts.append(v.get("app", "") if isinstance(v, dict) else "")
             if d["status"] == "closed":
                 parts.append(closed_label(cfg, d))
             self.search_text[iid] = normalize(" ".join(parts))
@@ -73,21 +77,19 @@ class Index:
         limit = now - timedelta(days=OLD_DAYS)
         for iid, rec in vault.items.items():
             d = rec.data
-            if rec.trashed or d["status"] != "active":
+            if rec.trashed or d["status"] != "active" or iid not in self.strength:
                 continue
-            found = []
-            if iid in self.reused:
-                found.append("reused")
-            st = self.strength.get(iid)
-            if st is not None and st.score <= 1:
-                found.append("weak")
             changed = parse_iso(d.get("pw_changed_at") or rec.created_at)
-            if d["fields"].get("password") and changed and changed < limit:
-                found.append("old")
-            if d["category"] == "finance" and not (d["fields"].get("twofa") or {}).get("on"):
-                found.append("no2fa")
-            if found:
-                self.issues[iid] = found
+            twofa_keys = [f["key"] for f in item_fields(cfg, d, include_empty=True) if f["type"] == "twofa"]
+            states = [twofa_state(d["fields"].get(k)) for k in twofa_keys]
+            state = next((s for s in ("on", "off", "none") if s in states), "unknown")
+            sf = assess(score=self.strength[iid].score, reused=self.reused.get(iid, 0),
+                        old=bool(changed and changed < limit), twofa=state, category=d["category"],
+                        has_twofa=bool(twofa_keys))
+            self.safety[iid] = sf
+            self.level_counts[sf.level] += 1
+            if sf.reasons:
+                self.issues[iid] = sf.reasons
 
     # ---------------------------------------------------------------- queries
     def ids_for(self, spec: tuple, status: str = "all", query: str = "") -> list[str]:

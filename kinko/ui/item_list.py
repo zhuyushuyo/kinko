@@ -8,10 +8,22 @@ from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QHBoxLayout, QLine
 
 from ..core.model import closed_label, find_category, first_letter
 from ..i18n import tr
+from ..settings import DEFAULT_SHORTCUTS
 from . import icons, theme
 from .widgets import Segmented, button, label, paint_avatar
 
 ID_ROLE = Qt.ItemDataRole.UserRole
+LEVEL_ORDER = {"low": 0, "mid": 1, "high": 2}
+
+
+def safety_text(sf) -> str | None:
+    """'安全度 中 — 2段階認証が未設定・1年以上変更なし', or None for accounts without a level."""
+    if sf is None:
+        return None
+    text = tr(f"safety.level.{sf.level}")
+    if sf.reasons:
+        text += " — " + tr("safety.sep").join(tr(f"safety.reason.{r}") for r in sf.reasons)
+    return text
 
 
 class ItemModel(QAbstractListModel):
@@ -38,6 +50,8 @@ class ItemModel(QAbstractListModel):
             return iid
         if role == Qt.ItemDataRole.DisplayRole:
             return self.vault.items[iid].data.get("title", "")
+        if role == Qt.ItemDataRole.ToolTipRole:
+            return safety_text(self.idx.safety.get(iid)) if self.idx else None
         return None
 
     def row_of(self, iid: str) -> int:
@@ -127,11 +141,10 @@ class RowDelegate(QStyledItemDelegate):
             elif d["status"] == "closed":
                 badge = (closed_label(vault.config, d), "rule2", "ink2")
             else:
-                issues = idx.issues.get(iid, [])
-                if "reused" in issues:
-                    badge = (tr("issue.reused_short"), "bengara_tint", "bengara")
-                elif "weak" in issues:
-                    badge = (tr("issue.weak_short"), "kincha_tint", "kincha")
+                sf = idx.safety.get(iid)
+                if sf is not None and sf.level == "low":
+                    short = "reused" if "reused" in sf.reasons else "weak"
+                    badge = (tr(f"issue.{short}_short"), "bengara_tint", "bengara")
             if badge:
                 f = QFont(opt.font)
                 f.setPixelSize(max(theme.font_px() - 2, 10))
@@ -145,8 +158,10 @@ class RowDelegate(QStyledItemDelegate):
                 p.setPen(QColor(theme.t(badge[2])))
                 p.drawText(br, Qt.AlignmentFlag.AlignCenter, badge[0])
                 right = br.left() - 8
-            if (d["fields"].get("twofa") or {}).get("on") and not closed:
-                p.drawPixmap(int(right - 16), int(r.center().y() - 8), icons.pixmap("shield_check", theme.t("tokiwa"), 16))
+            sf = None if closed else idx.safety.get(iid)
+            if sf is not None and sf.level != "low":
+                name, color = ("shield_check", "tokiwa") if sf.level == "high" else ("shield_dot", "kincha")
+                p.drawPixmap(int(right - 16), int(r.center().y() - 8), icons.pixmap(name, theme.t(color), 16))
                 right -= 22
             if d.get("favorite") and not rec.trashed:
                 p.drawPixmap(int(right - 14), int(r.center().y() - 7), icons.pixmap("star_fill", theme.t("kincha"), 14))
@@ -275,7 +290,14 @@ class ListPane(QWidget):
         self.search.accept_first.connect(self._accept_first)
         row0 = QHBoxLayout()
         row0.setContentsMargins(0, 0, 8, 0)
-        row0.addWidget(self.search)
+        row0.setSpacing(8)
+        row0.addWidget(self.search, 1)
+        self.add_btn = button(tr("list.add"), "primary", "plus", slot=self.new_requested.emit)
+        sc = dict(DEFAULT_SHORTCUTS)
+        sc.update(settings["shortcuts"] or {})
+        key = QKeySequence(sc.get("new_item", "")).toString(QKeySequence.SequenceFormat.NativeText)
+        self.add_btn.setToolTip(tr("list.add_tip", shortcut=key) if key else tr("sc.new_item"))
+        row0.addWidget(self.add_btn)
         lay.addLayout(row0)
 
         row = QHBoxLayout()
@@ -372,9 +394,16 @@ class ListPane(QWidget):
         ids = self.index.sort(ids, sort)
         if self.spec == ("recent",) and not query:
             ids = ids[:30]
+        health = self.spec == ("health",)
+        if health:
+            safety = self.index.safety
+            ids.sort(key=lambda i: LEVEL_ORDER.get(safety[i].level if i in safety else "high", 2))
         self.model.set_data(ids, self.vault, self.index, self.settings["list_subtitle"])
         if query:
             self.caption.setText(tr("list.search_result", q=query, n=len(ids)))
+        elif health:
+            c = self.index.level_counts
+            self.caption.setText(tr("safety.counts", high=c["high"], mid=c["mid"], low=c["low"]))
         else:
             self.caption.setText(tr("list.count", n=len(ids)))
         if not ids:

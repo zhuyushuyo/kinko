@@ -8,8 +8,8 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLineEdit, QMessageBox,
                              QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget)
 
-from ..core.model import (AUTH_APPS, closed_label, display_name, empty_item, find_category,
-                          first_letter, item_fields, is_empty, new_id)
+from ..core.model import (AUTH_APPS, TWOFA_STATES, closed_label, display_name, empty_item, find_category,
+                          first_letter, item_fields, is_empty, new_id, twofa_state, twofa_value)
 from ..i18n import tr
 from . import theme
 from .generator_popup import GeneratorPopup
@@ -70,30 +70,50 @@ class QAEditor(QWidget):
 
 
 class TwoFAEditor(QWidget):
+    """Whether the account uses two-step verification - or whether the service even offers it."""
+
     changed = pyqtSignal()
 
     def __init__(self, value, parent=None):
         super().__init__(parent)
-        value = value or {}
-        lay = QHBoxLayout(self)
+        lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(10)
-        self.switch = Switch(tr("editor.twofa_use"), bool(value.get("on")))
+        lay.setSpacing(4)
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        self.state = QComboBox()
+        for st in TWOFA_STATES:
+            self.state.addItem(tr(f"twofa.{st}"), st)
+        self.state.setCurrentIndex(max(0, self.state.findData(twofa_state(value))))
         self.app = QComboBox()
         self.app.setEditable(True)
         self.app.addItems(AUTH_APPS)
-        self.app.setCurrentText(value.get("app") or AUTH_APPS[0])
-        self.app.setEnabled(self.switch.isChecked())
-        self.switch.toggled.connect(self.app.setEnabled)
-        self.switch.toggled.connect(lambda _: self.changed.emit())
+        current = value.get("app") if isinstance(value, dict) else ""
+        self.app.setCurrentText(current or AUTH_APPS[0])
+        self.app.setToolTip(tr("twofa.method"))
+        row.addWidget(self.state)
+        row.addWidget(self.app, 1)
+        lay.addLayout(row)
+        self.hint = label(tr("editor.twofa_hint"), "smallfaint", wrap=True)
+        lay.addWidget(self.hint)
+        self._sync()
+        self.state.currentIndexChanged.connect(self._state_changed)
         self.app.currentTextChanged.connect(lambda _: self.changed.emit())
-        lay.addWidget(self.switch)
-        lay.addWidget(self.app, 1)
+
+    def _sync(self) -> None:
+        on = self.state.currentData() == "on"
+        self.app.setVisible(on)
+        self.hint.setVisible(self.state.currentData() == "unknown")
+
+    def _state_changed(self) -> None:
+        self._sync()
+        self.changed.emit()
+
+    def set_state(self, state: str) -> None:
+        self.state.setCurrentIndex(max(0, self.state.findData(state)))
 
     def value(self) -> dict | None:
-        if not self.switch.isChecked():
-            return None
-        return {"on": True, "app": self.app.currentText().strip()}
+        return twofa_value(self.state.currentData(), self.app.currentText())
 
 
 class AddFieldDialog(QDialog):

@@ -204,8 +204,11 @@ class Sidebar(QWidget):
             for tag, n in sorted(index.tags.items(), key=lambda kv: kv[0]):
                 self.nav.add({"kind": "nav", "spec": ("tag", tag), "label": tag, "icon": "tag", "count": n})
         if s["show_health"]:
-            self.foot.add({"kind": "nav", "spec": ("health",), "label": tr("nav.health"), "icon": "shield",
-                           "badge": len(index.issues) or None, "count": None if index.issues else 0})
+            c = index.level_counts
+            # red badge only for accounts to fix soon; the ones that could be better are a plain count
+            item = self.foot.add({"kind": "nav", "spec": ("health",), "label": tr("nav.health"), "icon": "shield",
+                                  "badge": c["low"] or None, "count": None if c["low"] else c["mid"]})
+            item.setToolTip(tr("safety.counts", high=c["high"], mid=c["mid"], low=c["low"]))
         self.foot.add({"kind": "nav", "spec": ("trash",), "label": tr("nav.trash"), "icon": "trash",
                        "count": index.trash_count})
         self.foot.add({"kind": "nav", "spec": ("settings",), "label": tr("nav.settings"), "icon": "sliders"})

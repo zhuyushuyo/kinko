@@ -87,7 +87,7 @@ M: dict[str, tuple[str, str]] = {
     "strength.2": ("普通", "Fair"),
     "strength.3": ("強い", "Strong"),
     "strength.4": ("とても強い", "Very strong"),
-    "issue.reused": ("同じパスワードを他の{n}件でも使っています。", "The same password is used by {n} other accounts."),
+    "issue.reused": ("同じパスワードを他の{n}件でも使っています。", "Other accounts use the same password ({n})."),
     "issue.weak": ("パスワードが弱いです。", "Weak password."),
     "issue.old": ("パスワードが1年以上変わっていません。", "Password not changed for over a year."),
     "issue.fair": ("パスワードの強さが「ふつう」です。もう少し長くすると安全です。",
